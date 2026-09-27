@@ -32,7 +32,7 @@ Prebuilt binaries for Windows, macOS and Linux (x64 and ARM) are in `dist/`. Mai
 |---|---|
 | `Tab` / `↓` | next tab (Now → Models → Stats) |
 | `Shift+Tab` / `↑` | previous tab |
-| `←` `→` | change the view inside the tab: the period on **Models** (today / 7d / 30d / all), the date range on **Stats** (All time / Last 7 days / Last 30 days) |
+| `←` `→` | change the view inside the tab: the period on **Models** (today / 7d / 30d / all), the date range on **Stats** (Today / Last 7 days / Last 30 days) |
 | `r` | refresh usage now |
 | `Esc` `q` `Ctrl+C` | quit |
 
@@ -45,7 +45,13 @@ Prebuilt binaries for Windows, macOS and Linux (x64 and ARM) are in `dist/`. Mai
 
 ## Stats tab
 
-Based on Claude Code's `/stats` overview, with Tally alongside. It shows favorite model, total tokens for the selected range, **all-time tokens**, sessions and the longest one, active days, current and best streak, most active day, and input/output/cache totals. Below that are an activity heatmap (last 52 weeks, shaded by quartile of daily messages) and a rotating fun fact. On short terminals the legend, month labels, fun fact and heatmap are dropped, in that order, to fit. The heatmap needs about 24 rows. History reaches back as far as your transcripts do (Claude Code deletes them after 30 days by default). honjoji's cache keeps its own records from then on.
+Shows what Claude Code's `/stats` doesn't: favorite model, top project, responses, tool calls (and per reply), average active session length, words written (about 0.75 × output tokens), cache hit rate, most active day and current streak. Below that are an **activity-by-hour** chart and a rotating fun fact. The chart grows or shrinks with the terminal, and Tally's speech line gives way first on short screens. Ranges are Today / Last 7 days / Last 30 days, which is everything Claude Code keeps on disk.
+
+Token totals, session counts and all-time history are left out on purpose, because they can't match `/stats`:
+- `/stats` adds up every streamed log line, and each response is written 2–3 times. Its token numbers come out about 2.5× the real count; honjoji counts each response once.
+- `/stats` keeps its own history past the 30 days of transcripts that honjoji can read.
+
+"Avg session" counts only active time. Pauses longer than 15 minutes between responses are left out, so resumed sessions don't count days of idling.
 
 ## Where the numbers come from
 

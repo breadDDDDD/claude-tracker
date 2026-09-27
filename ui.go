@@ -201,9 +201,9 @@ func (a *app) compose(now time.Time, w, h int) []string {
 
 	foot := []string{"", dim(" " + tabHints[a.tab])}
 	if a.tab == 2 {
-		// The heatmap outranks Tally's speech line (she's already on screen),
-		// so give up the speech rows when that's what lets the heatmap fit.
-		if avail := h - len(out) - len(foot); avail < 10 && avail >= 8 {
+		// The hour chart outranks Tally's speech line (she's already on screen),
+		// so give up the speech rows when that's what lets the chart fit.
+		if avail := h - len(out) - len(foot); avail-2 < statsBelowMin && avail >= statsBelowMin {
 			return append(append(out, a.statsBelow(now, W, avail)...), foot...)
 		}
 	}

@@ -8,28 +8,40 @@ import (
 	"time"
 )
 
-// The Stats tab mirrors Claude Code's /stats Overview: activity heatmap,
-// two columns of facts, a token breakdown and a rotating fun fact.
+// The Stats tab shows what Claude Code's /stats doesn't: projects, tool calls,
+// session length, cache efficiency and when in the day you work. It avoids
+// token totals, session counts and all-time history on purpose: /stats sums
+// every streamed log line (about 2.5x the real token count) and keeps history
+// past the 30 days of transcripts we can read, so those numbers never agree.
 
+// Ranges stay within the transcripts Claude Code keeps, so they're complete.
 var statRanges = []struct {
 	Label string
-	Days  int // 0 = all time
-}{{"All time", 0}, {"Last 7 days", 7}, {"Last 30 days", 30}}
+	Days  int // 1 = today only
+}{{"Today", 1}, {"Last 7 days", 7}, {"Last 30 days", 30}}
 
-var cClaude = hexRGB("#da7756") // Claude Code's heatmap / value colour
+const defaultStatsRange = 2
+
+// idleGap: a pause longer than this between responses isn't session time.
+const idleGap = 15 * time.Minute
+
+var cClaude = hexRGB("#da7756") // Claude Code's orange
 
 type Overview struct {
-	Daily                  map[int]int // local day number -> messages, all time
-	Today                  int
-	Fav                    string
-	Total, In, Out, CR, CW int64 // within the selected range
-	AllTime                int64 // every token ever, regardless of range
-	Sessions               int
-	Longest                time.Duration
-	ActiveDays, TotalDays  int
-	CurStreak, LongStreak  int
-	PeakDay                int // -1 when none
-	HasData                bool
+	Fav          string
+	TopProj      string
+	TopProjShare float64 // of responses in range
+	Projects     int
+	Responses    int64
+	Tools        int64
+	Sessions     int
+	AvgSession   time.Duration
+	CacheHit     float64 // share of input served from cache, 0..1
+	Out          int64
+	PeakDay      int // local day number, -1 if none
+	CurStreak    int
+	Hours        [24]int64 // responses per local hour of day
+	HasData      bool
 }
 
 func dayOffset(now time.Time) int64 {
@@ -43,150 +55,83 @@ func dayTime(d int, off int64) time.Time { return time.Unix(int64(d)*86400-off, 
 
 func (s *Store) overview(now time.Time, rng int) Overview {
 	off := dayOffset(now)
-	ov := Overview{Daily: map[int]int{}, Today: dayNum(now.Unix(), off), PeakDay: -1}
-	if len(s.Recs) == 0 {
+	today := dayNum(now.Unix(), off)
+	from := today - statRanges[rng].Days + 1
+	ov := Overview{PeakDay: -1}
+
+	active := map[int]bool{}
+	daily := map[int]int64{}
+	perModel := map[uint16]int64{}
+	perProj := map[uint16]int64{}
+	sess := map[uint32][]int64{}
+	var in, cr int64
+	for _, r := range s.Recs {
+		d := dayNum(r.TS, off)
+		active[d] = true
+		if d < from {
+			continue
+		}
+		ov.Responses++
+		ov.Tools += int64(r.Tools)
+		ov.Out += r.Out
+		in += r.In + r.CW
+		cr += r.CR
+		daily[d]++
+		perModel[r.Model] += r.In + r.Out + r.CR + r.CW
+		if int(r.Sess) < len(s.SessProj) {
+			perProj[s.SessProj[r.Sess]]++
+		}
+		ov.Hours[(r.TS+off)%86400/3600]++
+		sess[r.Sess] = append(sess[r.Sess], r.TS)
+	}
+	for d := today; active[d]; d-- {
+		ov.CurStreak++
+	}
+	if ov.Responses == 0 {
 		return ov
 	}
 	ov.HasData = true
-	first := ov.Today
-	for _, r := range s.Recs {
-		d := dayNum(r.TS, off)
-		ov.Daily[d]++
-		ov.AllTime += r.In + r.Out + r.CR + r.CW
-		first = min(first, d)
-	}
-	// The current streak is always all-time, as in Claude Code.
-	for d := ov.Today; ov.Daily[d] > 0; d-- {
-		ov.CurStreak++
-	}
 
-	from := first
-	ov.TotalDays = ov.Today - first + 1
-	if n := statRanges[rng].Days; n > 0 {
-		from, ov.TotalDays = ov.Today-n+1, n
-	}
-
-	perModel := map[uint16]int64{}
-	type span struct{ a, b int64 }
-	sess := map[uint32]*span{}
-	for _, r := range s.Recs {
-		if dayNum(r.TS, off) < from {
-			continue
-		}
-		t := r.In + r.Out + r.CR + r.CW
-		perModel[r.Model] += t
-		ov.Total += t
-		ov.In += r.In
-		ov.Out += r.Out
-		ov.CR += r.CR
-		ov.CW += r.CW
-		if sp := sess[r.Sess]; sp == nil {
-			sess[r.Sess] = &span{r.TS, r.TS}
-		} else {
-			sp.a, sp.b = min(sp.a, r.TS), max(sp.b, r.TS)
-		}
-	}
 	var best int64 = -1
 	for m, t := range perModel {
 		if t > best {
 			best, ov.Fav = t, s.Models[m]
 		}
 	}
-	ov.Sessions = len(sess)
-	for _, sp := range sess {
-		ov.Longest = max(ov.Longest, time.Duration(sp.b-sp.a)*time.Second)
-	}
-	run, peak := 0, 0
-	for d := from; d <= ov.Today; d++ {
-		c := ov.Daily[d]
-		if c == 0 {
-			run = 0
-			continue
+	best = -1
+	for p, n := range perProj {
+		if n > best {
+			best, ov.TopProj = n, s.Projects[p]
 		}
-		ov.ActiveDays++
-		run++
-		ov.LongStreak = max(ov.LongStreak, run)
-		if c > peak {
-			peak, ov.PeakDay = c, d
+	}
+	ov.Projects = len(perProj)
+	ov.TopProjShare = float64(best) / float64(ov.Responses)
+
+	// Active time only: resumed sessions would otherwise count days of idling.
+	var total time.Duration
+	for _, ts := range sess {
+		slices.Sort(ts)
+		for i := 1; i < len(ts); i++ {
+			if gap := ts[i] - ts[i-1]; gap <= int64(idleGap/time.Second) {
+				total += time.Duration(gap) * time.Second
+			}
+		}
+	}
+	ov.Sessions = len(sess)
+	ov.AvgSession = total / time.Duration(len(sess))
+	if in+cr > 0 {
+		ov.CacheHit = float64(cr) / float64(in+cr)
+	}
+	best = -1
+	for d, n := range daily {
+		if n > best || (n == best && d > ov.PeakDay) {
+			best, ov.PeakDay = n, d
 		}
 	}
 	return ov
 }
 
-// ---- rendering ------------------------------------------------------------
-
-var monthNames = []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
-
-// heatmap draws the GitHub-style grid exactly like Claude Code: weeks as
-// columns, Mon/Wed/Fri labels, quartile shading of daily message counts.
-func heatmap(ov Overview, now time.Time, width int, months, legend bool) []string {
-	off := dayOffset(now)
-	weeks := min(52, max(10, width-4))
-	var counts []int
-	for _, c := range ov.Daily {
-		if c > 0 {
-			counts = append(counts, c)
-		}
-	}
-	slices.Sort(counts)
-	level := func(c int) int {
-		n := len(counts)
-		switch {
-		case c == 0 || n == 0:
-			return 0
-		case c >= counts[n*3/4]:
-			return 4
-		case c >= counts[n/2]:
-			return 3
-		case c >= counts[n/4]:
-			return 2
-		}
-		return 1
-	}
-	cells := []string{fg(cDim, "·"), fg(cClaude, "░"), fg(cClaude, "▒"), fg(cClaude, "▓"), fg(cClaude, "█")}
-
-	start := ov.Today - int(now.Weekday()) - (weeks-1)*7
-	var rows [7]strings.Builder
-	var monthSeq []int
-	last := -1
-	for w := 0; w < weeks; w++ {
-		for r := 0; r < 7; r++ {
-			d := start + w*7 + r
-			if r == 0 {
-				if m := int(dayTime(d, off).Month()) - 1; m != last {
-					monthSeq, last = append(monthSeq, m), m
-				}
-			}
-			if d > ov.Today {
-				rows[r].WriteString(" ")
-				continue
-			}
-			rows[r].WriteString(cells[level(ov.Daily[d])])
-		}
-	}
-
-	var out []string
-	if months {
-		q := weeks / max(len(monthSeq), 1)
-		var b strings.Builder
-		for _, m := range monthSeq {
-			b.WriteString(padR(monthNames[m], q))
-		}
-		out = append(out, "    "+b.String())
-	}
-	days := []string{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}
-	for r := 0; r < 7; r++ {
-		label := "   "
-		if r == 1 || r == 3 || r == 5 {
-			label = days[r]
-		}
-		out = append(out, label+" "+rows[r].String())
-	}
-	if legend {
-		out = append(out, "", "    Less "+cells[1]+" "+cells[2]+" "+cells[3]+" "+cells[4]+" More")
-	}
-	return out
-}
+// ---- helpers --------------------------------------------------------------
 
 func longDur(d time.Duration) string {
 	s := int(d.Seconds())
@@ -207,6 +152,17 @@ func plural(n int, one string) string {
 	}
 	return one + "s"
 }
+
+// comma formats 12345 as "12,345".
+func comma(n int64) string {
+	s := strconv.FormatInt(n, 10)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
+}
+
+// ---- fun facts ------------------------------------------------------------
 
 var funBooks = []struct {
 	name   string
@@ -232,26 +188,26 @@ var funDurations = []struct {
 	{"a full night of sleep", 480},
 }
 
-// funFact picks one of Claude Code's comparisons, rotating every 30s.
+// funFact compares what Claude wrote and how long you work to familiar
+// things, rotating every 30s.
 func funFact(ov Overview, now time.Time) string {
 	var c []string
-	if io := ov.In + ov.Out; io > 0 {
-		for _, b := range funBooks {
-			if io < b.tokens {
-				continue
-			}
-			if r := float64(io) / float64(b.tokens); r >= 2 {
-				c = append(c, fmt.Sprintf("Your input and output are ~%dx the tokens in %s", int(r), b.name))
-			} else {
-				c = append(c, "Your input and output are about as many tokens as "+b.name)
-			}
+	for _, b := range funBooks {
+		if ov.Out < b.tokens {
+			continue
+		}
+		if r := float64(ov.Out) / float64(b.tokens); r >= 2 {
+			c = append(c, fmt.Sprintf("Claude's replies add up to ~%dx the length of %s", int(r), b.name))
+		} else {
+			c = append(c, "Claude's replies add up to about the length of "+b.name)
 		}
 	}
-	if ov.Longest > 0 {
-		for _, d := range funDurations {
-			if r := ov.Longest.Minutes() / d.minutes; r >= 2 {
-				c = append(c, fmt.Sprintf("Your longest session is ~%dx longer than %s", int(r), d.name))
-			}
+	for _, d := range funDurations {
+		switch r := ov.AvgSession.Minutes() / d.minutes; {
+		case r >= 2:
+			c = append(c, fmt.Sprintf("Your average session is ~%dx longer than %s", int(r), d.name))
+		case r >= 1:
+			c = append(c, "Your average session is about as long as "+d.name)
 		}
 	}
 	if len(c) == 0 {
@@ -260,17 +216,11 @@ func funFact(ov Overview, now time.Time) string {
 	return c[int(now.Unix()/30)%len(c)]
 }
 
-// statsPanel is the right-hand column beside Tally: the date range and the
-// key facts, one per row, with Claude Code's labels and orange values.
+// ---- rendering ------------------------------------------------------------
+
+// statsPanel is the column beside Tally: date range and one fact per row.
 func (a *app) statsPanel(now time.Time) []string {
 	ov := a.ov
-	if !ov.HasData {
-		return []string{fg(cAmber, "No stats available yet."), dim("Start using Claude Code!")}
-	}
-	val := func(s string) string { return fg(cClaude, s) }
-	row := func(label, v string) string { return dim(padR(label, 17)) + v }
-	days := func(n int) string { return boldFg(cClaude, strconv.Itoa(n)) + " " + plural(n, "day") }
-
 	var sel []string
 	for i, r := range statRanges {
 		if i == a.statsRange {
@@ -279,38 +229,42 @@ func (a *app) statsPanel(now time.Time) []string {
 			sel = append(sel, dim(r.Label))
 		}
 	}
-	peak := dim("—")
-	if ov.PeakDay >= 0 {
-		peak = val(dayTime(ov.PeakDay, dayOffset(now)).Format("Jan 2"))
+	head := []string{strings.Join(sel, dim(" · ")), ""}
+	if !ov.HasData {
+		return append(head, dim("No activity in this range."))
 	}
-	return []string{
-		strings.Join(sel, dim(" · ")),
-		"",
+	val := func(s string) string { return fg(cClaude, s) }
+	row := func(label, v string) string { return dim(padR(label, 17)) + v }
+
+	perReply := float64(ov.Tools) / float64(ov.Responses)
+	proj := val(ov.TopProj) + dim(fmt.Sprintf(" · %.0f%%", ov.TopProjShare*100))
+	if ov.Projects > 1 {
+		proj += dim(fmt.Sprintf(" of %d projects", ov.Projects))
+	}
+	return append(head,
 		row("Favorite model", val(prettyModel(ov.Fav))),
-		row("Total tokens", val(human(float64(ov.Total)))),
-		row("All-time tokens", val(human(float64(ov.AllTime)))),
-		row("Sessions", val(strconv.Itoa(ov.Sessions))+dim(" · longest ")+val(longDur(ov.Longest))),
-		row("Active days", val(strconv.Itoa(ov.ActiveDays))+dim("/"+strconv.Itoa(ov.TotalDays))),
-		row("Streak", days(ov.CurStreak)+dim(" now · best ")+days(ov.LongStreak)),
-		row("Most active day", peak),
-		row("Input / output", val(human(float64(ov.In)))+dim(" / ")+val(human(float64(ov.Out)))),
-		row("Cache", val(human(float64(ov.CR)))+dim(" read · ")+val(human(float64(ov.CW)))+dim(" write")),
-	}
+		row("Top project", proj),
+		row("Responses", val(comma(ov.Responses))),
+		row("Tool calls", val(comma(ov.Tools))+dim(fmt.Sprintf(" · %.1f per reply", perReply))),
+		row("Avg session", val(longDur(ov.AvgSession))+dim(fmt.Sprintf(" · %d %s", ov.Sessions, plural(ov.Sessions, "session")))),
+		row("Words written", val("~"+human(float64(ov.Out)*0.75))),
+		row("Cache hit rate", val(fmt.Sprintf("%.0f%%", ov.CacheHit*100))),
+		row("Most active day", val(dayTime(ov.PeakDay, dayOffset(now)).Format("Mon, Jan 2"))),
+		row("Current streak", boldFg(cClaude, strconv.Itoa(ov.CurStreak))+" "+plural(ov.CurStreak, "day")),
+	)
 }
 
-// statsBelow is the full-width part under Tally: the activity heatmap and a
-// fun fact. rows is the space left; on short terminals the legend, month
-// labels, fun fact and finally the heatmap itself are dropped to fit.
+// statsBelowMin is the fewest rows the hour chart needs (title, 2 bars, axis).
+const statsBelowMin = 4
+
+// statsBelow is the full-width part under Tally: an activity-by-hour chart
+// that grows with the space available, then a fun fact.
 func (a *app) statsBelow(now time.Time, width, rows int) []string {
 	ov := a.ov
-	if !ov.HasData {
+	if !ov.HasData || rows < statsBelowMin {
 		return nil
 	}
-	fun := funFact(ov, now)
-	if r := []rune(fun); len(r) > width-2 {
-		fun = string(r[:width-3]) + "…"
-	}
-	budget := rows
+	budget := rows - statsBelowMin
 	take := func(n int) bool {
 		if budget >= n {
 			budget -= n
@@ -318,20 +272,79 @@ func (a *app) statsBelow(now time.Time, width, rows int) []string {
 		}
 		return false
 	}
-	grid := take(8) // blank + 7 rows
+	gap := take(1)
+	fun := funFact(ov, now)
+	if r := []rune(fun); len(r) > width-2 {
+		fun = string(r[:width-3]) + "…"
+	}
 	withFun := fun != "" && take(2)
-	months := grid && take(1)
-	legend := grid && take(2)
+	height := 2
+	for height < 4 && take(1) {
+		height++
+	}
 
 	var out []string
-	if grid {
+	if gap {
 		out = append(out, "")
-		for _, l := range heatmap(ov, now, width-2, months, legend) {
-			out = append(out, "  "+l)
+	}
+	out = append(out, hourChart(ov.Hours, width-2, height)...)
+	if withFun {
+		out = append(out, "", fg(cClaude, fun))
+	}
+	for i := range out {
+		if out[i] != "" {
+			out[i] = "  " + out[i]
 		}
 	}
-	if withFun {
-		out = append(out, "", "  "+fg(cClaude, fun))
-	}
 	return out
+}
+
+// hourChart draws responses per hour of day as eighth-block columns.
+func hourChart(hours [24]int64, width, height int) []string {
+	colW := 3 // two-cell bar + gap
+	if width < 24*colW {
+		colW = 2
+	}
+	var peak int
+	var mx int64
+	for h, n := range hours {
+		if n > mx {
+			mx, peak = n, h
+		}
+	}
+	title := dim("Activity by hour")
+	if mx > 0 {
+		pk := fmt.Sprintf("busiest %02d:00–%02d:00", peak, (peak+1)%24)
+		if gap := 24*colW - 1 - visLen(title) - len([]rune(pk)); gap > 0 {
+			title += strings.Repeat(" ", gap) + fg(cClaude, pk)
+		}
+	}
+	out := []string{title}
+	blocks := []rune(" ▁▂▃▄▅▆▇█")
+	for r := height - 1; r >= 0; r-- {
+		var b strings.Builder
+		for h := 0; h < 24; h++ {
+			e := 0
+			if mx > 0 {
+				e = int(float64(hours[h]) / float64(mx) * float64(height*8))
+			}
+			lvl := min(max(e-r*8, 0), 8)
+			cell := string(blocks[lvl])
+			switch {
+			case lvl > 0:
+				b.WriteString(fg(cClaude, strings.Repeat(cell, colW-1)))
+			case r == 0:
+				b.WriteString(fg(cTrack, strings.Repeat("▁", colW-1)))
+			default:
+				b.WriteString(strings.Repeat(" ", colW-1))
+			}
+			b.WriteString(" ")
+		}
+		out = append(out, b.String())
+	}
+	var axis strings.Builder
+	for h := 0; h < 24; h += 3 {
+		axis.WriteString(padR(strconv.Itoa(h), 3*colW))
+	}
+	return append(out, dim(strings.TrimRight(axis.String(), " ")))
 }

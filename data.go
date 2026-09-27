@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -18,6 +19,7 @@ type Rec struct {
 	TS             int64 // unix seconds
 	Model          uint16
 	Sess           uint32 // index into Store.Sessions
+	Tools          uint16 // tool calls in this response
 	In, Out, CR, CW int64
 }
 
@@ -31,13 +33,15 @@ type fileState struct {
 // Store holds every usage record plus per-file read offsets, so each scan only
 // reads bytes appended since the last one. It is persisted to disk between runs.
 // cacheVersion bumps whenever Rec changes shape, forcing a one-time reindex.
-const cacheVersion = 2
+const cacheVersion = 3
 
 type Store struct {
 	Version   int
 	Recs      []Rec
 	Models    []string
 	Sessions  []string
+	SessProj  []uint16 // per session: index into Projects
+	Projects  []string // folder name each session was started in
 	Seen      map[string]int // message.id+requestId -> index in Recs
 	Files     map[string]*fileState
 	PctPerTok float64 // learned from the usage API, used for offline estimates
@@ -56,7 +60,8 @@ func newStore(root, cachePath string) *Store {
 	if f, err := os.Open(cachePath); err == nil {
 		var c Store
 		if gob.NewDecoder(f).Decode(&c) == nil && c.Version == cacheVersion && c.Seen != nil && c.Files != nil {
-			s.Recs, s.Models, s.Sessions, s.Seen, s.Files, s.PctPerTok = c.Recs, c.Models, c.Sessions, c.Seen, c.Files, c.PctPerTok
+			s.Recs, s.Models, s.Sessions, s.SessProj, s.Projects = c.Recs, c.Models, c.Sessions, c.SessProj, c.Projects
+			s.Seen, s.Files, s.PctPerTok = c.Seen, c.Files, c.PctPerTok
 		}
 		f.Close()
 	}
@@ -165,12 +170,14 @@ var (
 	kUsage     = []byte(`"usage"`)
 	kAssistant = []byte(`"assistant"`)
 	kAPIErr    = []byte(`"isApiErrorMessage":true`)
+	kToolUse   = []byte(`"content":[{"type":"tool_use"`) // each line holds one content block
 )
 
 type rawLine struct {
 	Timestamp string `json:"timestamp"`
 	RequestID string `json:"requestId"`
 	SessionID string `json:"sessionId"`
+	Cwd       string `json:"cwd"`
 	Message   struct {
 		ID    string `json:"id"`
 		Model string `json:"model"`
@@ -224,14 +231,20 @@ func (s *Store) readFrom(path string, st *fileState) bool {
 			continue
 		}
 		u := l.Message.Usage
-		rec := Rec{TS: t.Unix(), Model: s.model(m), Sess: s.session(l.SessionID), In: u.In, Out: u.Out, CR: u.CR, CW: u.CW}
+		rec := Rec{TS: t.Unix(), Model: s.model(m), Sess: s.session(l.SessionID, l.Cwd), In: u.In, Out: u.Out, CR: u.CR, CW: u.CW}
+		if bytes.Contains(line, kToolUse) {
+			rec.Tools = 1
+		}
 		key := l.Message.ID + ":" + l.RequestID
 		if i, ok := s.Seen[key]; ok {
-			// Streaming writes the same message several times; keep the most complete.
-			if rec.Out > s.Recs[i].Out {
-				s.Recs[i] = rec
-				changed = true
+			// Streaming writes one line per content block of the same message,
+			// each repeating its usage: count the blocks, keep the fullest usage.
+			rec.Tools += s.Recs[i].Tools
+			if rec.Out < s.Recs[i].Out {
+				rec.In, rec.Out, rec.CR, rec.CW = s.Recs[i].In, s.Recs[i].Out, s.Recs[i].CR, s.Recs[i].CW
 			}
+			s.Recs[i] = rec
+			changed = true
 			continue
 		}
 		s.Seen[key] = len(s.Recs)
@@ -241,13 +254,25 @@ func (s *Store) readFrom(path string, st *fileState) bool {
 	return changed
 }
 
-func (s *Store) session(id string) uint32 {
+// session interns a session id; its project is the folder of the first line
+// seen, i.e. where Claude Code was started (later cds into subfolders don't count).
+func (s *Store) session(id, cwd string) uint32 {
 	if i, ok := s.sessIdx[id]; ok {
 		return i
 	}
 	i := uint32(len(s.Sessions))
 	s.Sessions = append(s.Sessions, id)
 	s.sessIdx[id] = i
+	name := filepath.Base(strings.TrimRight(strings.ReplaceAll(cwd, `\`, "/"), "/"))
+	if cwd == "" || name == "." || name == "/" {
+		name = "(unknown)"
+	}
+	p := slices.Index(s.Projects, name)
+	if p < 0 {
+		p = len(s.Projects)
+		s.Projects = append(s.Projects, name)
+	}
+	s.SessProj = append(s.SessProj, uint16(p))
 	return i
 }
 

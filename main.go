@@ -139,7 +139,7 @@ func main() {
 	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
 		claudeDir = d
 	}
-	a := &app{claudeDir: claudeDir, started: time.Now()}
+	a := &app{claudeDir: claudeDir, started: time.Now(), statsRange: defaultStatsRange}
 	switch strings.ToLower(*startTab) {
 	case "models", "m", "2":
 		a.tab = 1
