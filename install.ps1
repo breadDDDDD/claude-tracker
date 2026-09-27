@@ -9,6 +9,10 @@ $ErrorActionPreference = 'Stop'
 $dir = Join-Path $env:LOCALAPPDATA 'Programs\honjoji'
 $exe = Join-Path $dir 'honjoji.exe'
 $envKey = 'HKCU:\Environment'
+# WindowsApps is on every user's PATH by default, including in terminals that were
+# already open (VS Code, Windows Terminal tabs), so a copy there works immediately.
+$appsDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
+$appsExe = Join-Path $appsDir 'honjoji.exe'
 
 function Get-UserPath {
     # Read raw so %VARS% in the user's PATH are preserved.
@@ -25,6 +29,7 @@ $parts = @((Get-UserPath) -split ';' | Where-Object { $_ -ne '' })
 
 if ($Uninstall) {
     Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+    Remove-Item -Force $appsExe, "$appsExe.old" -ErrorAction SilentlyContinue
     Set-UserPath (($parts | Where-Object { $_.TrimEnd('\') -ne $dir }) -join ';')
     Write-Host 'honjoji removed. (Your cache at ~\.honjoji can be deleted too.)'
     exit 0
@@ -45,14 +50,22 @@ if (-not (Test-Path $src)) {
     }
 }
 
-New-Item -ItemType Directory -Force $dir | Out-Null
-if (Test-Path $exe) {
-    # A running exe can't be overwritten but can be renamed, so updates work even while it's open.
-    Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
-    Rename-Item $exe "$exe.old" -Force
+function Install-Exe($from, $to) {
+    if (Test-Path $to) {
+        # A running exe can't be overwritten but can be renamed, so updates work even while it's open.
+        Remove-Item "$to.old" -Force -ErrorAction SilentlyContinue
+        Rename-Item $to "$to.old" -Force
+    }
+    Copy-Item $from $to -Force
+    Remove-Item "$to.old" -Force -ErrorAction SilentlyContinue
 }
-Copy-Item $src $exe -Force
-Remove-Item "$exe.old" -Force -ErrorAction SilentlyContinue
+
+New-Item -ItemType Directory -Force $dir | Out-Null
+Install-Exe $src $exe
+$instant = $false
+if (Test-Path $appsDir) {
+    try { Install-Exe $src $appsExe; $instant = $true } catch { }
+}
 
 if (-not ($parts | Where-Object { $_.TrimEnd('\') -eq $dir })) {
     Set-UserPath ((@($parts) + $dir) -join ';')
@@ -65,7 +78,11 @@ Write-Host "honjoji installed to $dir"
 if (-not (Test-Path (Join-Path $claudeDir '.credentials.json'))) {
     Write-Host 'Note: no Claude Code login found yet. Run "claude" and log in; honjoji picks it up automatically.' -ForegroundColor Yellow
 }
-Write-Host 'Type "honjoji" in any NEW terminal to open it. Press Esc to quit.'
+if ($instant) {
+    Write-Host 'Type "honjoji" in any terminal to open it. Press Esc to quit.'
+} else {
+    Write-Host 'Type "honjoji" in a NEW terminal to open it (restart VS Code if you use its terminal). Press Esc to quit.'
+}
 Write-Host ''
 
 if (-not $NoRun) { & $exe }

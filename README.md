@@ -16,7 +16,7 @@ Then run one command:
 
 | OS | Command | Installs to |
 |---|---|---|
-| Windows (cmd / PowerShell) | `.\install.cmd` | `%LOCALAPPDATA%\Programs\honjoji` + user PATH |
+| Windows (cmd / PowerShell) | `.\install.cmd` | `%LOCALAPPDATA%\Programs\honjoji` + user PATH, plus a copy in `WindowsApps` so it works right away, even in terminals that were already open (e.g. VS Code) |
 | macOS / Linux / Git Bash | `sh install.sh` | `~/.local/bin` + your shell profile |
 
 The command installs honjoji and starts it right away. After that, type `honjoji` in any new terminal.
