@@ -19,7 +19,8 @@ import (
 const (
 	scanEvery    = time.Second      // re-check recently active transcripts
 	walkEvery    = 10 * time.Second // full walk to find brand-new sessions
-	apiRetry     = 2 * time.Minute
+	apiRetry     = 2 * time.Minute  // wait after an error; first 429 backoff
+	maxBackoff   = 15 * time.Minute // cap for repeated 429s
 	activeWindow = 6 * time.Second // transcript written this recently => claude is working
 	saveEvery    = 5 * time.Minute
 )
@@ -76,9 +77,18 @@ func (a *app) session(now time.Time) (pct float64, rst time.Time, est, ok bool) 
 
 // applyUsage merges an API result, detecting window resets and burn spikes and
 // recalibrating the offline estimate.
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+// applyUsage takes a result from getUsage: its error state always, its numbers
+// only when they're newer than what's on screen (cached reads repeat them).
 func (a *app) applyUsage(u Usage, now time.Time) {
-	if u.Err != nil {
-		a.usage.Err, a.usage.Fetched = u.Err, u.Fetched
+	a.usage.Err, a.usage.RetryAt = u.Err, u.RetryAt
+	if !u.Session.OK || !u.Fetched.After(a.usageAt) {
 		return
 	}
 	old := a.usage.Session
@@ -94,7 +104,8 @@ func (a *app) applyUsage(u Usage, now time.Time) {
 	for len(a.samples) > 0 && now.Sub(a.samples[0].t) > 3*time.Minute {
 		a.samples = a.samples[1:]
 	}
-	a.usage, a.usageAt = u, now
+	a.usage.Session, a.usage.Weekly, a.usage.Fetched = u.Session, u.Weekly, u.Fetched
+	a.usageAt = u.Fetched // age of the data itself, whoever fetched it
 	a.refreshStats(now)
 	if u.Session.Util >= 3 && a.stats.WindowTok > 0 {
 		a.store.PctPerTok = u.Session.Util / float64(a.stats.WindowTok)
@@ -154,9 +165,15 @@ func main() {
 	a.store.save()
 	debug.FreeOSMemory() // drop the one-off parsing garbage
 
+	// Show the last good reading straight away, even if the network is slow or
+	// rate limited right now.
+	if c := loadShared(); !*noAPI && c.Session.OK {
+		a.applyUsage(Usage{Session: c.Session, Weekly: c.Weekly, Fetched: c.Fetched}, time.Now())
+	}
+
 	if *once {
 		if !*noAPI {
-			a.applyUsage(fetchUsage(claudeDir), time.Now())
+			a.applyUsage(getUsage(claudeDir, *apiEvery, apiRetry), time.Now())
 		}
 		now := time.Now()
 		a.refreshStats(now)
@@ -199,14 +216,16 @@ func main() {
 	usageCh := make(chan Usage, 1)
 	fetching := false
 	var nextFetch time.Time
-	fetch := func() {
+	backoff := apiRetry // wait after a 429 that doesn't say how long; doubles up to maxBackoff
+	fetch := func(maxAge time.Duration) {
 		if *noAPI || fetching {
 			return
 		}
 		fetching = true
-		go func() { usageCh <- fetchUsage(claudeDir) }()
+		go func() { usageCh <- getUsage(claudeDir, maxAge, backoff) }()
 	}
-	fetch()
+	shareAge := max(*apiEvery-5*time.Second, 25*time.Second) // reuse another honjoji's fetch this fresh
+	fetch(shareAge)
 
 	tick := time.NewTicker(scanEvery)
 	defer tick.Stop()
@@ -257,18 +276,24 @@ func main() {
 				}
 				a.refreshStats(time.Now())
 			case "r", "R":
-				if time.Since(a.usage.Fetched) > 10*time.Second {
-					fetch()
-				}
+				fetch(10 * time.Second) // still honours any rate-limit backoff
 			}
 		case u := <-usageCh:
 			fetching = false
-			a.applyUsage(u, time.Now())
-			if u.Err != nil {
-				nextFetch = time.Now().Add(max(apiRetry, *apiEvery))
-			} else {
-				nextFetch = time.Now().Add(*apiEvery)
+			now := time.Now()
+			a.applyUsage(u, now)
+			switch {
+			case u.Err == errRateLimited:
+				nextFetch = u.RetryAt
+				backoff = min(backoff*2, maxBackoff)
+			case u.Err != nil:
+				nextFetch = now.Add(max(apiRetry, *apiEvery))
+			default:
+				// Line up with whichever honjoji fetched last.
+				nextFetch = u.Fetched.Add(*apiEvery)
+				backoff = apiRetry
 			}
+			nextFetch = later(nextFetch, now.Add(5*time.Second))
 		case <-tick.C:
 			full := time.Since(lastWalk) >= walkEvery
 			if full {
@@ -279,7 +304,7 @@ func main() {
 			}
 			if !nextFetch.IsZero() && time.Now().After(nextFetch) {
 				nextFetch = time.Time{}
-				fetch()
+				fetch(shareAge)
 			}
 			if time.Since(lastSave) > saveEvery {
 				a.store.save()

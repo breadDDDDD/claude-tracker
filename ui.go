@@ -281,9 +281,16 @@ func (a *app) nowPanel(now time.Time, accent rgb) []string {
 	}
 
 	// where the limit numbers come from: live API, stale, or failing
+	age := ""
+	if a.usage.Session.OK {
+		age = dim(" · " + dur(now.Sub(a.usageAt)) + " old")
+	}
 	switch {
-	case a.usage.Err != nil && !a.usage.Fetched.IsZero():
-		p = append(p, row("data", fg(cAmber, "● "+a.usage.Err.Error())))
+	case a.usage.Err == errRateLimited:
+		wait := dur(max(a.usage.RetryAt.Sub(now), 0) + 59*time.Second) // round up
+		p = append(p, row("data", fg(cAmber, "● limited · retry "+wait)+age))
+	case a.usage.Err != nil:
+		p = append(p, row("data", fg(cAmber, "● "+a.usage.Err.Error())+age))
 	case a.usage.Session.OK && now.Sub(a.usageAt) < 2*time.Minute:
 		p = append(p, row("data", fg(accent, "● ")+dim("live")))
 	case a.usage.Session.OK:
