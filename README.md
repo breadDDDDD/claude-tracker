@@ -41,7 +41,7 @@ Prebuilt binaries for Windows, macOS and Linux (x64 and ARM) are in `dist/`. Mai
 - `-once` prints one snapshot and exits.
 - `-tab models` / `-tab stats` opens on that tab.
 - `-no-api` works fully offline, using local estimates only.
-- `-api-every 60s` sets the usage API poll interval (minimum 30s).
+- `-api-every 2m` sets the usage API poll interval (default 2m, minimum 30s).
 
 ## Stats tab
 
@@ -55,7 +55,7 @@ Token totals, session counts and all-time history are left out on purpose, becau
 
 ## Where the numbers come from
 
-- **5h session / weekly %, reset times:** Anthropic's usage endpoint, the same one behind Claude Code's `/usage`. It's polled every 60s with the login Claude Code saved in `~/.claude/.credentials.json`. honjoji only reads that token and never refreshes it. The endpoint is undocumented. If it fails, the 5h figure falls back to an estimate (`~NN% est`) based on local tokens and a ratio learned from the last successful call.
+- **5h session / weekly %, reset times:** Anthropic's usage endpoint, the same one behind Claude Code's `/usage`. It's polled every 2 minutes (one request shared by all open windows) with the login Claude Code saved in `~/.claude/.credentials.json`. honjoji only reads that token and never refreshes it. The endpoint is undocumented. If it fails, the 5h figure falls back to an estimate (`~NN% est`) based on local tokens and a ratio learned from the last successful call.
 - **Tokens, models, burn and history:** your local transcripts in `~/.claude/projects/**/*.jsonl`. Entries are de-duplicated by message and request id. "tok" means input + output + cache-write tokens. Cache reads are shown separately.
 - **Cache:** `~/.honjoji/cache.gob` stores parsed records and read offsets, so each launch only reads new bytes.
 

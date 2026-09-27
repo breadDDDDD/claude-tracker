@@ -46,6 +46,7 @@ type app struct {
 	spikeAt     time.Time
 	samples     []sample
 	claudeDir   string
+	apiEvery    time.Duration // usage poll interval; data older than this plus a minute shows its age
 }
 
 func (a *app) windowStart() time.Time {
@@ -129,7 +130,7 @@ func (a *app) mood(now time.Time) {
 func main() {
 	once := flag.Bool("once", false, "print one snapshot and exit")
 	noAPI := flag.Bool("no-api", false, "never contact the usage API (local estimates only)")
-	apiEvery := flag.Duration("api-every", 60*time.Second, "how often to poll the usage API")
+	apiEvery := flag.Duration("api-every", 2*time.Minute, "how often to poll the usage API")
 	startTab := flag.String("tab", "now", "tab to open on: now, models or stats")
 	flag.Parse()
 	if *apiEvery < 30*time.Second {
@@ -150,7 +151,7 @@ func main() {
 	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
 		claudeDir = d
 	}
-	a := &app{claudeDir: claudeDir, started: time.Now(), statsRange: defaultStatsRange}
+	a := &app{claudeDir: claudeDir, started: time.Now(), statsRange: defaultStatsRange, apiEvery: *apiEvery}
 	switch strings.ToLower(*startTab) {
 	case "models", "m", "2":
 		a.tab = 1

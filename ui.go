@@ -291,7 +291,7 @@ func (a *app) nowPanel(now time.Time, accent rgb) []string {
 		p = append(p, row("data", fg(cAmber, "● limited · retry "+wait)+age))
 	case a.usage.Err != nil:
 		p = append(p, row("data", fg(cAmber, "● "+a.usage.Err.Error())+age))
-	case a.usage.Session.OK && now.Sub(a.usageAt) < 2*time.Minute:
+	case a.usage.Session.OK && now.Sub(a.usageAt) < a.apiEvery+time.Minute:
 		p = append(p, row("data", fg(accent, "● ")+dim("live")))
 	case a.usage.Session.OK:
 		p = append(p, row("data", fg(accent, "● ")+dim("live · "+dur(now.Sub(a.usageAt))+" ago")))
