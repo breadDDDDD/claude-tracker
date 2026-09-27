@@ -1,5 +1,9 @@
 # honjoji
 
+<p align="center">
+  <img src="assets/Screenshot%20(439).png" alt="Tally's style reference: a dark-haired girl cooling off in front of a fan" width="640">
+</p>
+
 A tiny terminal tracker for your Claude usage, with Tally the mascot (see `mascot/`).
 It only runs while it's open: type `honjoji` in any terminal and press **Esc** to quit.
 

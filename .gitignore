@@ -6,8 +6,10 @@
 *.out
 *.tmp
 
-# Mascot style references: 46 MB of screenshots, not needed to build or run
-/assets/
+# Mascot style references: 46 MB of screenshots, not needed to build or run.
+# Only the README picture is kept.
+/assets/*
+!/assets/Screenshot (439).png
 
 # Python bytecode from mascot/tools
 __pycache__/
