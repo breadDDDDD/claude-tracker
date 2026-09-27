@@ -190,23 +190,7 @@ func (a *app) compose(now time.Time, w int) []string {
 	// blank row keeps the bobbing sprite clear of the speech line
 	out = append(out, "", "  "+boldFg(accent, e.Kaomoji)+"  "+dim("\x1b[3m"+quipFor(a.anim.expr, now)), "")
 
-	foot := dim(" tab switch · p period · r refresh · esc quit")
-	status := ""
-	switch {
-	case a.usage.Err != nil && !a.usage.Fetched.IsZero():
-		status = fg(cAmber, "● "+a.usage.Err.Error())
-	case a.usage.Session.OK:
-		status = fg(accent, "● ") + dim("live · "+dur(now.Sub(a.usageAt))+" ago")
-		if now.Sub(a.usageAt) < time.Minute {
-			status = fg(accent, "● ") + dim("live")
-		}
-	default:
-		status = dim("● connecting…")
-	}
-	if gap := W - visLen(foot) - visLen(status) - 1; gap > 0 {
-		foot += strings.Repeat(" ", gap) + status
-	}
-	out = append(out, foot)
+	out = append(out, dim(" tab switch · p period · r refresh · esc quit"))
 	return out
 }
 
@@ -273,6 +257,18 @@ func (a *app) nowPanel(now time.Time, accent rgb) []string {
 		p = append(p, row("status", dim("no sessions yet")))
 	default:
 		p = append(p, row("status", dim("idle "+dur(idle))))
+	}
+
+	// where the limit numbers come from: live API, stale, or failing
+	switch {
+	case a.usage.Err != nil && !a.usage.Fetched.IsZero():
+		p = append(p, row("data", fg(cAmber, "● "+a.usage.Err.Error())))
+	case a.usage.Session.OK && now.Sub(a.usageAt) < 2*time.Minute:
+		p = append(p, row("data", fg(accent, "● ")+dim("live")))
+	case a.usage.Session.OK:
+		p = append(p, row("data", fg(accent, "● ")+dim("live · "+dur(now.Sub(a.usageAt))+" ago")))
+	default:
+		p = append(p, row("data", dim("● connecting…")))
 	}
 	return p
 }
