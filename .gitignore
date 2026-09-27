@@ -1,0 +1,25 @@
+# Local builds (the shipped binaries live in dist/ and ARE committed)
+/honjoji
+/honjoji.exe
+*.test
+*.prof
+*.out
+*.tmp
+
+# Mascot style references: 46 MB of screenshots, not needed to build or run
+/assets/
+
+# Python bytecode from mascot/tools
+__pycache__/
+*.pyc
+
+# Editors and OS clutter
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local Claude Code settings
+.claude/settings.local.json
