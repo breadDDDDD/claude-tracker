@@ -22,7 +22,8 @@ type Overview struct {
 	Daily                  map[int]int // local day number -> messages, all time
 	Today                  int
 	Fav                    string
-	Total, In, Out, CR, CW int64
+	Total, In, Out, CR, CW int64 // within the selected range
+	AllTime                int64 // every token ever, regardless of range
 	Sessions               int
 	Longest                time.Duration
 	ActiveDays, TotalDays  int
@@ -51,6 +52,7 @@ func (s *Store) overview(now time.Time, rng int) Overview {
 	for _, r := range s.Recs {
 		d := dayNum(r.TS, off)
 		ov.Daily[d]++
+		ov.AllTime += r.In + r.Out + r.CR + r.CW
 		first = min(first, d)
 	}
 	// The current streak is always all-time, as in Claude Code.
@@ -258,15 +260,16 @@ func funFact(ov Overview, now time.Time) string {
 	return c[int(now.Unix()/30)%len(c)]
 }
 
-// statsView lays the tab out full width; rows is the height available, used
-// to drop the heatmap's month labels and legend on short terminals.
-func (a *app) statsView(now time.Time, width, rows int) []string {
+// statsPanel is the right-hand column beside Tally: the date range and the
+// key facts, one per row, with Claude Code's labels and orange values.
+func (a *app) statsPanel(now time.Time) []string {
 	ov := a.ov
 	if !ov.HasData {
-		return []string{"", "  " + fg(cAmber, "No stats available yet. Start using Claude Code!")}
+		return []string{fg(cAmber, "No stats available yet."), dim("Start using Claude Code!")}
 	}
 	val := func(s string) string { return fg(cClaude, s) }
-	col := func(label, v string) string { return padR(label+": "+v, 32) }
+	row := func(label, v string) string { return dim(padR(label, 17)) + v }
+	days := func(n int) string { return boldFg(cClaude, strconv.Itoa(n)) + " " + plural(n, "day") }
 
 	var sel []string
 	for i, r := range statRanges {
@@ -276,30 +279,38 @@ func (a *app) statsView(now time.Time, width, rows int) []string {
 			sel = append(sel, dim(r.Label))
 		}
 	}
-
-	facts := []string{
-		col("Favorite model", val(prettyModel(ov.Fav))) + "Total tokens: " + val(human(float64(ov.Total))),
-		"",
-		col("Sessions", val(human(float64(ov.Sessions)))) + "Longest session: " + val(longDur(ov.Longest)),
-		col("Active days", val(strconv.Itoa(ov.ActiveDays))+dim("/"+strconv.Itoa(ov.TotalDays))) +
-			"Longest streak: " + boldFg(cClaude, strconv.Itoa(ov.LongStreak)) + " " + plural(ov.LongStreak, "day"),
-	}
-	peak := ""
+	peak := dim("—")
 	if ov.PeakDay >= 0 {
-		peak = "Most active day: " + val(dayTime(ov.PeakDay, dayOffset(now)).Format("Jan 2"))
+		peak = val(dayTime(ov.PeakDay, dayOffset(now)).Format("Jan 2"))
 	}
-	facts = append(facts,
-		padR(peak, 32)+"Current streak: "+boldFg(cClaude, strconv.Itoa(ov.CurStreak))+" "+plural(ov.CurStreak, "day"),
-		dim(fmt.Sprintf("Input %s · Output %s · Cache read %s · Cache write %s",
-			human(float64(ov.In)), human(float64(ov.Out)), human(float64(ov.CR)), human(float64(ov.CW)))))
+	return []string{
+		strings.Join(sel, dim(" · ")),
+		"",
+		row("Favorite model", val(prettyModel(ov.Fav))),
+		row("Total tokens", val(human(float64(ov.Total)))),
+		row("All-time tokens", val(human(float64(ov.AllTime)))),
+		row("Sessions", val(strconv.Itoa(ov.Sessions))+dim(" · longest ")+val(longDur(ov.Longest))),
+		row("Active days", val(strconv.Itoa(ov.ActiveDays))+dim("/"+strconv.Itoa(ov.TotalDays))),
+		row("Streak", days(ov.CurStreak)+dim(" now · best ")+days(ov.LongStreak)),
+		row("Most active day", peak),
+		row("Input / output", val(human(float64(ov.In)))+dim(" / ")+val(human(float64(ov.Out)))),
+		row("Cache", val(human(float64(ov.CR)))+dim(" read · ")+val(human(float64(ov.CW)))+dim(" write")),
+	}
+}
+
+// statsBelow is the full-width part under Tally: the activity heatmap and a
+// fun fact. rows is the space left; on short terminals the legend, month
+// labels, fun fact and finally the heatmap itself are dropped to fit.
+func (a *app) statsBelow(now time.Time, width, rows int) []string {
+	ov := a.ov
+	if !ov.HasData {
+		return nil
+	}
 	fun := funFact(ov, now)
 	if r := []rune(fun); len(r) > width-2 {
 		fun = string(r[:width-3]) + "…"
 	}
-
-	// Fit short terminals: the facts always show, then the heatmap grid, the
-	// fun fact, month labels and finally the legend, as space allows.
-	budget := rows - 2 - len(facts)
+	budget := rows
 	take := func(n int) bool {
 		if budget >= n {
 			budget -= n
@@ -307,27 +318,20 @@ func (a *app) statsView(now time.Time, width, rows int) []string {
 		}
 		return false
 	}
-	grid := take(7)
-	gap := grid && take(1)
+	grid := take(8) // blank + 7 rows
 	withFun := fun != "" && take(2)
 	months := grid && take(1)
 	legend := grid && take(2)
 
-	out := []string{strings.Join(sel, dim(" · ")), ""}
+	var out []string
 	if grid {
-		out = append(out, heatmap(ov, now, width-2, months, legend)...)
-		if gap {
-			out = append(out, "")
+		out = append(out, "")
+		for _, l := range heatmap(ov, now, width-2, months, legend) {
+			out = append(out, "  "+l)
 		}
 	}
-	out = append(out, facts...)
 	if withFun {
-		out = append(out, "", val(fun))
-	}
-	for i := range out {
-		if out[i] != "" {
-			out[i] = "  " + out[i]
-		}
+		out = append(out, "", "  "+fg(cClaude, fun))
 	}
 	return out
 }

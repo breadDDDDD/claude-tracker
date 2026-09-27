@@ -236,29 +236,28 @@ func main() {
 			switch k {
 			case "\x1b", "q", "Q", "\x03":
 				return
-			case "\t", "\x1b[C", "\x1b[D", "1", "2", "3":
-				switch k {
-				case "1", "2", "3":
-					a.tab = int(k[0] - '1')
-				case "\x1b[D":
-					a.tab = (a.tab + len(tabNames) - 1) % len(tabNames)
-				default:
-					a.tab = (a.tab + 1) % len(tabNames)
-				}
+			// Tab / ↓ and Shift+Tab / ↑ switch tabs; ← → act inside the tab.
+			// Arrows may arrive as CSI (ESC [) or SS3 (ESC O) sequences.
+			case "\t", "\x1b[B", "\x1bOB":
+				a.tab = (a.tab + 1) % len(tabNames)
 				a.refreshStats(time.Now())
-			case "p", "P", "\x1b[A", "\x1b[B":
-				d := 1
-				if k == "\x1b[A" {
-					d = len(periods) - 1
+			case "\x1b[Z", "\x1b[A", "\x1bOA":
+				a.tab = (a.tab + len(tabNames) - 1) % len(tabNames)
+				a.refreshStats(time.Now())
+			case "\x1b[C", "\x1bOC", "\x1b[D", "\x1bOD":
+				step := 1
+				if k[2] == 'D' {
+					step = -1
 				}
-				a.period = (a.period + d) % len(periods)
-				a.tab = 1
+				switch a.tab {
+				case 1:
+					a.period = (a.period + step + len(periods)) % len(periods)
+				case 2:
+					a.statsRange = (a.statsRange + step + len(statRanges)) % len(statRanges)
+				}
 				a.refreshStats(time.Now())
 			case "r", "R":
-				if a.tab == 2 { // as in Claude Code's /stats, r cycles the date range
-					a.statsRange = (a.statsRange + 1) % len(statRanges)
-					a.refreshStats(time.Now())
-				} else if time.Since(a.usage.Fetched) > 10*time.Second {
+				if time.Since(a.usage.Fetched) > 10*time.Second {
 					fetch()
 				}
 			}

@@ -127,6 +127,13 @@ func dur(d time.Duration) string {
 
 var tabNames = []string{"Now", "Models", "Stats"}
 
+// Tab/↑↓ always switch tabs; ←→ act inside the current tab.
+var tabHints = []string{
+	"tab/↑↓ switch · r refresh · esc quit",
+	"tab/↑↓ switch · ←→ period · r refresh · esc quit",
+	"tab/↑↓ switch · ←→ date range · r refresh · esc quit",
+}
+
 const (
 	maxW     = 78
 	spriteGap = "   " // breathing room on each side of the divider
@@ -161,21 +168,14 @@ func (a *app) compose(now time.Time, w, h int) []string {
 	e := mf.Expressions[a.anim.expr]
 	speech := "  " + boldFg(accent, e.Kaomoji) + "  " + dim("\x1b[3m"+quipFor(a.anim.expr, now))
 
-	if a.tab == 2 {
-		// Stats is full width like Claude Code's; Tally stays on as her speech line.
-		foot := []string{"", dim(" tab switch · r cycle dates · esc quit")}
-		if h >= 24 { // room for Tally's line too
-			foot = append([]string{"", speech}, foot...)
-		}
-		out = append(out, a.statsView(now, W, h-len(out)-len(foot))...)
-		return append(out, foot...)
-	}
-
 	var panel []string
-	if a.tab == 0 {
+	switch a.tab {
+	case 0:
 		panel = a.nowPanel(now, accent)
-	} else {
+	case 1:
 		panel = a.modelsPanel(accent)
+	default:
+		panel = a.statsPanel(now)
 	}
 
 	idx, dip, _ := a.anim.at(now)
@@ -199,11 +199,20 @@ func (a *app) compose(now time.Time, w, h int) []string {
 		out = append(out, line)
 	}
 
+	foot := []string{"", dim(" " + tabHints[a.tab])}
+	if a.tab == 2 {
+		// The heatmap outranks Tally's speech line (she's already on screen),
+		// so give up the speech rows when that's what lets the heatmap fit.
+		if avail := h - len(out) - len(foot); avail < 10 && avail >= 8 {
+			return append(append(out, a.statsBelow(now, W, avail)...), foot...)
+		}
+	}
 	// blank row keeps the bobbing sprite clear of the speech line
-	out = append(out, "", speech, "")
-
-	out = append(out, dim(" tab switch · p period · r refresh · esc quit"))
-	return out
+	out = append(out, "", speech)
+	if a.tab == 2 {
+		out = append(out, a.statsBelow(now, W, h-len(out)-len(foot))...)
+	}
+	return append(out, foot...)
 }
 
 func row(label, val string) string { return dim(padR(label, 13)) + val }

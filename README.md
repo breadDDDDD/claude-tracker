@@ -30,9 +30,10 @@ Prebuilt binaries for Windows, macOS and Linux (x64 and ARM) are in `dist/`. Mai
 
 | Key | Action |
 |---|---|
-| `Tab` `←` `→` `1` `2` `3` | switch between **Now**, **Models** and **Stats** |
-| `p` `↑` `↓` | cycle the Models period (today / 7d / 30d / all) |
-| `r` | refresh usage now (on **Stats**: cycle All time / Last 7 days / Last 30 days, like Claude Code's `/stats`) |
+| `Tab` / `↓` | next tab (Now → Models → Stats) |
+| `Shift+Tab` / `↑` | previous tab |
+| `←` `→` | change the view inside the tab: the period on **Models** (today / 7d / 30d / all), the date range on **Stats** (All time / Last 7 days / Last 30 days) |
+| `r` | refresh usage now |
 | `Esc` `q` `Ctrl+C` | quit |
 
 ## Flags
@@ -44,7 +45,7 @@ Prebuilt binaries for Windows, macOS and Linux (x64 and ARM) are in `dist/`. Mai
 
 ## Stats tab
 
-Mirrors Claude Code's `/stats` overview: an activity heatmap (last 52 weeks, shaded by quartile of daily messages), then favorite model, total tokens, sessions, longest session, active days, longest and current streak, most active day, an input/output/cache breakdown and a rotating fun fact. On short terminals it drops the legend, month labels and fun fact to fit. History reaches back as far as your transcripts do (Claude Code deletes them after 30 days by default). honjoji's cache keeps its own records from then on.
+Based on Claude Code's `/stats` overview, with Tally alongside. It shows favorite model, total tokens for the selected range, **all-time tokens**, sessions and the longest one, active days, current and best streak, most active day, and input/output/cache totals. Below that are an activity heatmap (last 52 weeks, shaded by quartile of daily messages) and a rotating fun fact. On short terminals the legend, month labels, fun fact and heatmap are dropped, in that order, to fit. The heatmap needs about 24 rows. History reaches back as far as your transcripts do (Claude Code deletes them after 30 days by default). honjoji's cache keeps its own records from then on.
 
 ## Where the numbers come from
 
