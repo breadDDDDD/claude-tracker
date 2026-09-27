@@ -1,0 +1,349 @@
+{
+  "name": "Tally",
+  "version": 1,
+  "sprite": {
+    "width_px": 20,
+    "height_px": 20,
+    "terminal_cols": 20,
+    "terminal_rows": 10,
+    "render": "half-block: '▀' fg=top pixel, bg=bottom pixel; '▄' when top is transparent"
+  },
+  "models": {
+    "opus": {
+      "outfit": "blazer",
+      "accent": "#d97757",
+      "label": "Opus"
+    },
+    "sonnet": {
+      "outfit": "shirt",
+      "accent": "#9b7fd1",
+      "label": "Sonnet"
+    },
+    "haiku": {
+      "outfit": "tee",
+      "accent": "#5fbf9f",
+      "label": "Haiku"
+    },
+    "fable": {
+      "outfit": "sunhat",
+      "accent": "#d9a441",
+      "label": "Fable"
+    },
+    "default": {
+      "outfit": "shirt",
+      "accent": "#9b7fd1",
+      "label": "Claude"
+    }
+  },
+  "outfits": {
+    "blazer": {
+      "note": "Grey work blazer over a lavender shirt — serious mode."
+    },
+    "shirt": {
+      "note": "Signature lavender blouse — the everyday default."
+    },
+    "tee": {
+      "note": "Mint lounge tee — light and quick."
+    },
+    "sunhat": {
+      "note": "White sun hat and sage tee — out exploring."
+    }
+  },
+  "expressions": {
+    "neutral": {
+      "reference": "431 — calm, open eyes, flat mouth",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 3200
+        },
+        {
+          "frame": 1,
+          "ms": 140
+        }
+      ],
+      "kaomoji": "(•_•)",
+      "kaomoji_ascii": "(o_o)"
+    },
+    "bliss": {
+      "reference": "442/443 — 'jyuwawawa~n' blank round eyes, open smile, blush",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 450
+        },
+        {
+          "frame": 1,
+          "ms": 450
+        }
+      ],
+      "kaomoji": "(○▽○)",
+      "kaomoji_ascii": "(OvO)"
+    },
+    "cheerful": {
+      "reference": "441 — waving hello, ^^ eyes, open smile",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 400
+        },
+        {
+          "frame": 1,
+          "ms": 400
+        }
+      ],
+      "kaomoji": "(^▽^)/",
+      "kaomoji_ascii": "(^o^)/"
+    },
+    "relaxed": {
+      "reference": "439 — eyes closed by the fan, little 'o' mouth",
+      "frames": 1,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 0
+        }
+      ],
+      "kaomoji": "(ᴗoᴗ)",
+      "kaomoji_ascii": "(-o-)"
+    },
+    "focused": {
+      "reference": "438 — heads-down writing, eyes glancing at the work",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 2600
+        },
+        {
+          "frame": 1,
+          "ms": 120
+        }
+      ],
+      "kaomoji": "(•_•)✎",
+      "kaomoji_ascii": "(._.)/"
+    },
+    "determined": {
+      "reference": "67 — burning aura, stern frown",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 220
+        },
+        {
+          "frame": 1,
+          "ms": 220
+        }
+      ],
+      "kaomoji": "(ò_ó)",
+      "kaomoji_ascii": "(`_')"
+    },
+    "annoyed": {
+      "reference": "30 — half-lidded, gloom lines, grumbling",
+      "frames": 1,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 0
+        }
+      ],
+      "kaomoji": "(¬_¬)",
+      "kaomoji_ascii": "(-_-)"
+    },
+    "glare": {
+      "reference": "34 — narrowed stare, furrowed brows, blush",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 2800
+        },
+        {
+          "frame": 1,
+          "ms": 120
+        }
+      ],
+      "kaomoji": "(ಠ_ಠ)",
+      "kaomoji_ascii": "(>_>)"
+    },
+    "sleepy": {
+      "reference": "35 — deadpan half-moon eyes, blush, dozing",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 1400
+        },
+        {
+          "frame": 1,
+          "ms": 1400
+        }
+      ],
+      "kaomoji": "(-_-)zZ",
+      "kaomoji_ascii": "(-_-)zZ"
+    },
+    "shocked": {
+      "reference": "28/440 — blank white eyes, open 'O' mouth",
+      "frames": 1,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 0
+        }
+      ],
+      "kaomoji": "(O□O)",
+      "kaomoji_ascii": "(O_O)!"
+    },
+    "nervous": {
+      "reference": "429/440 — shrunken pupils, wobbly mouth, sweat drop",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 600
+        },
+        {
+          "frame": 1,
+          "ms": 600
+        }
+      ],
+      "kaomoji": "(•_•;)",
+      "kaomoji_ascii": "(o_o;)"
+    },
+    "despair": {
+      "reference": "431 (volcano) — sad brows, streaming tears",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 500
+        },
+        {
+          "frame": 1,
+          "ms": 500
+        }
+      ],
+      "kaomoji": "(T_T)",
+      "kaomoji_ascii": "(T_T)"
+    },
+    "panic": {
+      "reference": "70/71/72 — >< eyes, yelling, flailing",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 120
+        },
+        {
+          "frame": 1,
+          "ms": 120
+        }
+      ],
+      "kaomoji": "(>□<)!!",
+      "kaomoji_ascii": "(>_<)!!"
+    },
+    "flustered": {
+      "reference": "32 — teary, heavy blush, small open mouth",
+      "frames": 1,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 0
+        }
+      ],
+      "kaomoji": "(//•_•//)",
+      "kaomoji_ascii": "(//o_o//)"
+    },
+    "sassy": {
+      "reference": "31 — one eye narrowed, telling you off",
+      "frames": 2,
+      "timeline": [
+        {
+          "frame": 0,
+          "ms": 260
+        },
+        {
+          "frame": 1,
+          "ms": 260
+        }
+      ],
+      "kaomoji": "(•o-)",
+      "kaomoji_ascii": "(o_-)"
+    }
+  },
+  "state_rules": [
+    {
+      "expression": "sassy",
+      "when": "last request errored / rate-limited response / auth problem",
+      "hold_ms": 4000
+    },
+    {
+      "expression": "panic",
+      "when": "usage_pct >= 100 (limit hit)"
+    },
+    {
+      "expression": "despair",
+      "when": "usage_pct >= 95"
+    },
+    {
+      "expression": "shocked",
+      "when": "burn spike: usage_pct rose >= 10 points within 2 minutes",
+      "hold_ms": 3000
+    },
+    {
+      "expression": "nervous",
+      "when": "usage_pct >= 85"
+    },
+    {
+      "expression": "flustered",
+      "when": "weekly_pct >= 80 (weekly cap closing in, session still OK)"
+    },
+    {
+      "expression": "cheerful",
+      "when": "app just started, or window just reset",
+      "hold_ms": 4000
+    },
+    {
+      "expression": "sleepy",
+      "when": "no activity for >= 10 minutes"
+    },
+    {
+      "expression": "glare",
+      "when": "usage_pct >= 75"
+    },
+    {
+      "expression": "annoyed",
+      "when": "usage_pct >= 60"
+    },
+    {
+      "expression": "determined",
+      "when": "actively generating AND model is opus"
+    },
+    {
+      "expression": "focused",
+      "when": "actively generating / running tools"
+    },
+    {
+      "expression": "bliss",
+      "when": "usage_pct < 10"
+    },
+    {
+      "expression": "relaxed",
+      "when": "idle 1-10 minutes AND usage_pct < 40"
+    },
+    {
+      "expression": "neutral",
+      "when": "otherwise"
+    }
+  ],
+  "paths": {
+    "ansi_truecolor": "ansi/truecolor/{outfit}/{expression}.{frame}.ans",
+    "ansi_256": "ansi/ansi256/{outfit}/{expression}.{frame}.ans",
+    "png_12x": "png/{outfit}/{expression}.{frame}.png",
+    "pixels": "sprites.json"
+  }
+}
