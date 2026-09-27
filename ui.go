@@ -187,7 +187,8 @@ func (a *app) compose(now time.Time, w int) []string {
 	}
 
 	e := mf.Expressions[a.anim.expr]
-	out = append(out, "  "+boldFg(accent, e.Kaomoji)+"  "+dim("\x1b[3m"+quipFor(a.anim.expr, now)), "")
+	// blank row keeps the bobbing sprite clear of the speech line
+	out = append(out, "", "  "+boldFg(accent, e.Kaomoji)+"  "+dim("\x1b[3m"+quipFor(a.anim.expr, now)), "")
 
 	foot := dim(" tab switch · p period · r refresh · esc quit")
 	status := ""
