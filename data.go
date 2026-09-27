@@ -17,6 +17,7 @@ import (
 type Rec struct {
 	TS             int64 // unix seconds
 	Model          uint16
+	Sess           uint32 // index into Store.Sessions
 	In, Out, CR, CW int64
 }
 
@@ -29,15 +30,21 @@ type fileState struct {
 
 // Store holds every usage record plus per-file read offsets, so each scan only
 // reads bytes appended since the last one. It is persisted to disk between runs.
+// cacheVersion bumps whenever Rec changes shape, forcing a one-time reindex.
+const cacheVersion = 2
+
 type Store struct {
+	Version   int
 	Recs      []Rec
 	Models    []string
+	Sessions  []string
 	Seen      map[string]int // message.id+requestId -> index in Recs
 	Files     map[string]*fileState
 	PctPerTok float64 // learned from the usage API, used for offline estimates
 
 	root      string
 	modelIdx  map[string]uint16
+	sessIdx   map[string]uint32
 	lastMod   time.Time // newest transcript write we've seen
 	lastErr   time.Time // newest API error line
 	dirty     bool
@@ -45,17 +52,21 @@ type Store struct {
 }
 
 func newStore(root, cachePath string) *Store {
-	s := &Store{Seen: map[string]int{}, Files: map[string]*fileState{}, root: root, cachePath: cachePath}
+	s := &Store{Version: cacheVersion, Seen: map[string]int{}, Files: map[string]*fileState{}, root: root, cachePath: cachePath}
 	if f, err := os.Open(cachePath); err == nil {
 		var c Store
-		if gob.NewDecoder(f).Decode(&c) == nil && c.Seen != nil && c.Files != nil {
-			s.Recs, s.Models, s.Seen, s.Files, s.PctPerTok = c.Recs, c.Models, c.Seen, c.Files, c.PctPerTok
+		if gob.NewDecoder(f).Decode(&c) == nil && c.Version == cacheVersion && c.Seen != nil && c.Files != nil {
+			s.Recs, s.Models, s.Sessions, s.Seen, s.Files, s.PctPerTok = c.Recs, c.Models, c.Sessions, c.Seen, c.Files, c.PctPerTok
 		}
 		f.Close()
 	}
 	s.modelIdx = map[string]uint16{}
 	for i, m := range s.Models {
 		s.modelIdx[m] = uint16(i)
+	}
+	s.sessIdx = map[string]uint32{}
+	for i, id := range s.Sessions {
+		s.sessIdx[id] = uint32(i)
 	}
 	for _, st := range s.Files {
 		if t := time.Unix(0, st.Mod); t.After(s.lastMod) {
@@ -159,6 +170,7 @@ var (
 type rawLine struct {
 	Timestamp string `json:"timestamp"`
 	RequestID string `json:"requestId"`
+	SessionID string `json:"sessionId"`
 	Message   struct {
 		ID    string `json:"id"`
 		Model string `json:"model"`
@@ -212,7 +224,7 @@ func (s *Store) readFrom(path string, st *fileState) bool {
 			continue
 		}
 		u := l.Message.Usage
-		rec := Rec{TS: t.Unix(), Model: s.model(m), In: u.In, Out: u.Out, CR: u.CR, CW: u.CW}
+		rec := Rec{TS: t.Unix(), Model: s.model(m), Sess: s.session(l.SessionID), In: u.In, Out: u.Out, CR: u.CR, CW: u.CW}
 		key := l.Message.ID + ":" + l.RequestID
 		if i, ok := s.Seen[key]; ok {
 			// Streaming writes the same message several times; keep the most complete.
@@ -227,6 +239,16 @@ func (s *Store) readFrom(path string, st *fileState) bool {
 		changed = true
 	}
 	return changed
+}
+
+func (s *Store) session(id string) uint32 {
+	if i, ok := s.sessIdx[id]; ok {
+		return i
+	}
+	i := uint32(len(s.Sessions))
+	s.Sessions = append(s.Sessions, id)
+	s.sessIdx[id] = i
+	return i
 }
 
 func (s *Store) model(name string) uint16 {

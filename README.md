@@ -30,17 +30,21 @@ Prebuilt binaries for Windows, macOS and Linux (x64 and ARM) are in `dist/`. Mai
 
 | Key | Action |
 |---|---|
-| `Tab` `←` `→` `1` `2` | switch between **Now** and **Models** |
+| `Tab` `←` `→` `1` `2` `3` | switch between **Now**, **Models** and **Stats** |
 | `p` `↑` `↓` | cycle the Models period (today / 7d / 30d / all) |
-| `r` | refresh usage now |
+| `r` | refresh usage now (on **Stats**: cycle All time / Last 7 days / Last 30 days, like Claude Code's `/stats`) |
 | `Esc` `q` `Ctrl+C` | quit |
 
 ## Flags
 
 - `-once` prints one snapshot and exits.
-- `-tab models` opens on the Models tab.
+- `-tab models` / `-tab stats` opens on that tab.
 - `-no-api` works fully offline, using local estimates only.
 - `-api-every 60s` sets the usage API poll interval (minimum 30s).
+
+## Stats tab
+
+Mirrors Claude Code's `/stats` overview: an activity heatmap (last 52 weeks, shaded by quartile of daily messages), then favorite model, total tokens, sessions, longest session, active days, longest and current streak, most active day, an input/output/cache breakdown and a rotating fun fact. On short terminals it drops the legend, month labels and fun fact to fit. History reaches back as far as your transcripts do (Claude Code deletes them after 30 days by default). honjoji's cache keeps its own records from then on.
 
 ## Where the numbers come from
 

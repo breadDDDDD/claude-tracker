@@ -38,6 +38,8 @@ type app struct {
 	anim    animator
 
 	tab, period int
+	statsRange  int      // Stats tab: index into statRanges
+	ov          Overview // Stats tab data, computed only while that tab is open
 	started     time.Time
 	resetAt     time.Time
 	spikeAt     time.Time
@@ -54,6 +56,9 @@ func (a *app) windowStart() time.Time {
 
 func (a *app) refreshStats(now time.Time) {
 	a.stats = a.store.stats(now, a.period, a.windowStart())
+	if a.tab == 2 {
+		a.ov = a.store.overview(now, a.statsRange)
+	}
 	a.statsAt = now
 }
 
@@ -114,7 +119,7 @@ func main() {
 	once := flag.Bool("once", false, "print one snapshot and exit")
 	noAPI := flag.Bool("no-api", false, "never contact the usage API (local estimates only)")
 	apiEvery := flag.Duration("api-every", 60*time.Second, "how often to poll the usage API")
-	startTab := flag.String("tab", "now", "tab to open on: now or models")
+	startTab := flag.String("tab", "now", "tab to open on: now, models or stats")
 	flag.Parse()
 	if *apiEvery < 30*time.Second {
 		*apiEvery = 30 * time.Second
@@ -135,8 +140,11 @@ func main() {
 		claudeDir = d
 	}
 	a := &app{claudeDir: claudeDir, started: time.Now()}
-	if strings.HasPrefix(strings.ToLower(*startTab), "m") {
+	switch strings.ToLower(*startTab) {
+	case "models", "m", "2":
 		a.tab = 1
+	case "stats", "s", "3":
+		a.tab = 2
 	}
 	a.store = newStore(filepath.Join(claudeDir, "projects"), filepath.Join(home, ".honjoji", "cache.gob"))
 	if len(a.store.Files) == 0 {
@@ -155,7 +163,7 @@ func main() {
 		a.started = time.Time{}
 		a.mood(now)
 		a.store.save()
-		fmt.Println(strings.Join(a.compose(now, maxW), "\x1b[0m\n") + "\x1b[0m")
+		fmt.Println(strings.Join(a.compose(now, maxW, 40),"\x1b[0m\n") + "\x1b[0m")
 		return
 	}
 
@@ -216,7 +224,7 @@ func main() {
 		if err != nil {
 			w, h = 80, 24
 		}
-		scr.draw(out, a.compose(now, w), w, h)
+		scr.draw(out, a.compose(now, w, h), w, h)
 		_, _, next := a.anim.at(now)
 		anim.Reset(max(next.Sub(now), 20*time.Millisecond))
 
@@ -228,14 +236,16 @@ func main() {
 			switch k {
 			case "\x1b", "q", "Q", "\x03":
 				return
-			case "\t", "\x1b[C", "\x1b[D", "1", "2":
-				if k == "1" {
-					a.tab = 0
-				} else if k == "2" {
-					a.tab = 1
-				} else {
-					a.tab = 1 - a.tab
+			case "\t", "\x1b[C", "\x1b[D", "1", "2", "3":
+				switch k {
+				case "1", "2", "3":
+					a.tab = int(k[0] - '1')
+				case "\x1b[D":
+					a.tab = (a.tab + len(tabNames) - 1) % len(tabNames)
+				default:
+					a.tab = (a.tab + 1) % len(tabNames)
 				}
+				a.refreshStats(time.Now())
 			case "p", "P", "\x1b[A", "\x1b[B":
 				d := 1
 				if k == "\x1b[A" {
@@ -245,7 +255,10 @@ func main() {
 				a.tab = 1
 				a.refreshStats(time.Now())
 			case "r", "R":
-				if time.Since(a.usage.Fetched) > 10*time.Second {
+				if a.tab == 2 { // as in Claude Code's /stats, r cycles the date range
+					a.statsRange = (a.statsRange + 1) % len(statRanges)
+					a.refreshStats(time.Now())
+				} else if time.Since(a.usage.Fetched) > 10*time.Second {
 					fetch()
 				}
 			}

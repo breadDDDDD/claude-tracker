@@ -125,13 +125,15 @@ func dur(d time.Duration) string {
 
 // ---- screen composition ---------------------------------------------------
 
+var tabNames = []string{"Now", "Models", "Stats"}
+
 const (
-	maxW      = 78
+	maxW     = 78
 	spriteGap = "   " // breathing room on each side of the divider
 	bodyRows  = 11 // sprite (10) + 1 for the bob
 )
 
-func (a *app) compose(now time.Time, w int) []string {
+func (a *app) compose(now time.Time, w, h int) []string {
 	st := a.stats
 	accent := accentOf(st.Current)
 	W := min(w, maxW)
@@ -139,24 +141,35 @@ func (a *app) compose(now time.Time, w int) []string {
 
 	var out []string
 	// header: title, tabs, current model
-	tabs := []string{"Now", "Models"}
-	h := " " + boldFg(accent, "honjoji") + "  "
-	for i, t := range tabs {
+	hd := " " + boldFg(accent, "honjoji") + "  "
+	for i, t := range tabNames {
 		if i == a.tab {
-			h += fmt.Sprintf("\x1b[1;38;2;24;22;28;48;2;%d;%d;%dm %s %s", accent.r, accent.g, accent.b, t, reset)
+			hd += fmt.Sprintf("\x1b[1;38;2;24;22;28;48;2;%d;%d;%dm %s %s", accent.r, accent.g, accent.b, t, reset)
 		} else {
-			h += dim(" " + t + " ")
+			hd += dim(" " + t + " ")
 		}
-		h += " "
+		hd += " "
 	}
 	right := ""
 	if st.Current != "" {
 		right = fg(accent, "● ") + prettyModel(st.Current) + " "
 	}
-	if gap := W - visLen(h) - visLen(right); gap > 0 {
-		h += strings.Repeat(" ", gap) + right
+	if gap := W - visLen(hd) - visLen(right); gap > 0 {
+		hd += strings.Repeat(" ", gap) + right
 	}
-	out = append(out, h, fg(cTrack, strings.Repeat("─", W)), "")
+	out = append(out, hd, fg(cTrack, strings.Repeat("─", W)), "")
+	e := mf.Expressions[a.anim.expr]
+	speech := "  " + boldFg(accent, e.Kaomoji) + "  " + dim("\x1b[3m"+quipFor(a.anim.expr, now))
+
+	if a.tab == 2 {
+		// Stats is full width like Claude Code's; Tally stays on as her speech line.
+		foot := []string{"", dim(" tab switch · r cycle dates · esc quit")}
+		if h >= 24 { // room for Tally's line too
+			foot = append([]string{"", speech}, foot...)
+		}
+		out = append(out, a.statsView(now, W, h-len(out)-len(foot))...)
+		return append(out, foot...)
+	}
 
 	var panel []string
 	if a.tab == 0 {
@@ -186,9 +199,8 @@ func (a *app) compose(now time.Time, w int) []string {
 		out = append(out, line)
 	}
 
-	e := mf.Expressions[a.anim.expr]
 	// blank row keeps the bobbing sprite clear of the speech line
-	out = append(out, "", "  "+boldFg(accent, e.Kaomoji)+"  "+dim("\x1b[3m"+quipFor(a.anim.expr, now)), "")
+	out = append(out, "", speech, "")
 
 	out = append(out, dim(" tab switch · p period · r refresh · esc quit"))
 	return out
